@@ -10,6 +10,10 @@
     #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000000; z-index: 9999; }
     #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
     #__bundler_placeholder { color: #999; font-size: 14px; }
+    html, body { cursor: none !important; }
+    #__wake_status { position: fixed; bottom: 6px; right: 6px; font: 10px/1.2 -apple-system, BlinkMacSystemFont, sans-serif; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 3px; z-index: 100000; pointer-events: auto; user-select: none; }
+    #__wake_status.hidden { display: none; }
+    #__wake_vid { position: fixed; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; z-index: -1; left: 0; top: 0; }
   </style>
   <noscript>
     <style>#__bundler_loading { display: none; }</style>
@@ -19,6 +23,120 @@
   </noscript>
 </head>
 <body>
+  <div id="__wake_status">wake: init</div>
+  <video id="__wake_vid" muted playsinline loop autoplay></video>
+  <script>
+  (function(){
+    'use strict';
+    var statusEl = document.getElementById('__wake_status');
+    try { if (/status=off|nostatus/.test(location.search)) statusEl.classList.add('hidden'); } catch(e){}
+    if (statusEl) statusEl.addEventListener('click', function(){ statusEl.classList.add('hidden'); });
+    function setStatus(s){ if (statusEl) statusEl.textContent = 'wake: ' + s; }
+
+    var wakeLock = null, usingLock = false, usingVideo = false;
+
+    async function requestWakeLock(){
+      if (!('wakeLock' in navigator)) { console.log('[wake] Wake Lock API unavailable'); return false; }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        usingLock = true;
+        updateStatus();
+        console.log('[wake] screen wake lock acquired');
+        wakeLock.addEventListener('release', function(){
+          usingLock = false;
+          updateStatus();
+          console.log('[wake] wake lock released');
+        });
+        return true;
+      } catch(e){
+        console.warn('[wake] wake lock request failed:', e && e.message);
+        return false;
+      }
+    }
+
+    function startVideoFallback(){
+      if (usingVideo) return true;
+      try {
+        var v = document.getElementById('__wake_vid');
+        if (!v) return false;
+        var canvas = document.createElement('canvas');
+        canvas.width = 2; canvas.height = 2;
+        var ctx = canvas.getContext('2d');
+        var t = 0;
+        (function draw(){
+          t = (t + 1) & 1;
+          ctx.fillStyle = t ? '#000' : '#010101';
+          ctx.fillRect(0, 0, 2, 2);
+          requestAnimationFrame(draw);
+        })();
+        if (!canvas.captureStream) { console.warn('[wake] captureStream unsupported'); return false; }
+        v.srcObject = canvas.captureStream(10);
+        var p = v.play();
+        if (p && p.catch) p.catch(function(err){ console.warn('[wake] hidden video play rejected:', err && err.message); });
+        usingVideo = true;
+        updateStatus();
+        console.log('[wake] canvas-stream fallback running');
+        return true;
+      } catch(e){
+        console.warn('[wake] video fallback failed:', e && e.message);
+        return false;
+      }
+    }
+
+    function updateStatus(){
+      var bits = [];
+      if (usingLock) bits.push('lock');
+      if (usingVideo) bits.push('video');
+      setStatus(bits.length ? bits.join('+') : 'idle');
+    }
+
+    setInterval(function(){
+      try {
+        document.body && document.body.setAttribute('data-ka', String(Date.now()));
+        document.dispatchEvent(new MouseEvent('mousemove', { bubbles: false, clientX: 0, clientY: 0 }));
+      } catch(e){}
+    }, 30000);
+
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible'){
+        if (!usingLock) requestWakeLock();
+        if (!usingVideo) startVideoFallback();
+      }
+    });
+
+    function onGesture(){
+      if (!usingLock) requestWakeLock();
+      if (!usingVideo) startVideoFallback();
+    }
+    ['click','touchstart','keydown'].forEach(function(ev){
+      document.addEventListener(ev, onGesture, { once: false, passive: true });
+    });
+
+    // Force playback-friendly attrs on any <video> the bundle inserts later
+    try {
+      new MutationObserver(function(muts){
+        muts.forEach(function(m){
+          (m.addedNodes || []).forEach(function(n){
+            if (n.nodeType !== 1) return;
+            var vids = n.tagName === 'VIDEO' ? [n] : (n.querySelectorAll ? n.querySelectorAll('video') : []);
+            Array.prototype.forEach.call(vids, function(vd){
+              if (vd.id === '__wake_vid') return;
+              try {
+                vd.muted = true; vd.defaultMuted = true;
+                vd.autoplay = true; vd.loop = true; vd.playsInline = true;
+                vd.setAttribute('muted',''); vd.setAttribute('autoplay','');
+                vd.setAttribute('loop',''); vd.setAttribute('playsinline','');
+                if (vd.paused) { var pp = vd.play(); if (pp && pp.catch) pp.catch(function(){}); }
+              } catch(e){}
+            });
+          });
+        });
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch(e){ console.warn('[wake] MutationObserver setup failed', e); }
+
+    requestWakeLock().then(function(){ startVideoFallback(); });
+  })();
+  </script>
   <div id="__bundler_thumbnail">
   <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
     <rect width="1200" height="800" fill="#000000"></rect>
