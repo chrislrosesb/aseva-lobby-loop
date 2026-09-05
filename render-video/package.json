@@ -1,0 +1,14 @@
+{
+  "name": "aseva-lobby-render",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frame-by-frame MP4 renderer for Aseva Lobby Loop.html",
+  "scripts": {
+    "render": "node render.js"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0",
+    "sirv": "^3.0.0"
+  }
+}

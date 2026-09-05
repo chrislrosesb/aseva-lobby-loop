@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Aseva — Lobby Loop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Resources referenced from JSX code (not HTML attributes) — lifted for the bundler -->
+<meta name="ext-resource-dependency" content="assets/logo-horizontal.png" data-resource-id="logoHorizontal">
+<meta name="ext-resource-dependency" content="assets/logo-horizontal-1c.png" data-resource-id="logoHorizontal1c">
+
+<template id="__bundler_thumbnail" data-bg-color="#000000">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#000000"/>
+    <g transform="translate(600 400)" fill="none" stroke="#00a1e2" stroke-width="8" stroke-linecap="round">
+      <path d="M -180 0 Q -120 -70 -60 0 T 60 0 T 180 0" opacity="0.9"/>
+      <path d="M -180 40 Q -120 -30 -60 40 T 60 40 T 180 40" opacity="0.5"/>
+    </g>
+    <text x="600" y="560" text-anchor="middle" fill="#ffffff" font-family="Source Sans 3, sans-serif" font-weight="700" font-size="56" letter-spacing="16">ASEVA</text>
+  </svg>
+</template>
+
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: #000; color: #fff;
+    overflow: hidden;
+    font-family: "Open Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  #root { width: 100vw; height: 100vh; position: relative; }
+  @keyframes asevaPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="animations.jsx"></script>
+<script type="text/babel" src="scenes-bundled/shared.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene1_open.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene2_pillars.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene3_network.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene4_years.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene5_quote.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene6_grid.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene7_stats.jsx"></script>
+<script type="text/babel" src="scenes-bundled/scene8_close.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+
+// Tweakable defaults — editable live + persisted via edit-mode host.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "playbackSpeed": 1,
+  "stackSceneSlow": 1
+}/*EDITMODE-END*/;
+
+// Apply playback speed globally.
+window.__asevaSpeed = TWEAK_DEFAULTS.playbackSpeed;
+
+// Scene schedule (seconds). Total 180s = 3 minutes. Loops for the 5-min lobby display.
+const SCHEDULE = [
+  { start: 0,   end: 15,  label: 'OPEN',     Comp: Scene1_Open },
+  { start: 15,  end: 40,  label: 'PILLARS',  Comp: Scene2_Pillars },
+  { start: 40,  end: 65,  label: 'NETWORK',  Comp: Scene3_Network },
+  { start: 65,  end: 95,  label: 'TIMELINE', Comp: Scene4_Years },
+  { start: 95,  end: 120, label: 'QUOTE',    Comp: Scene5_Quote },
+  { start: 120, end: 132, label: 'STACK',    Comp: Scene6_Grid },
+  { start: 132, end: 157, label: 'STATS',    Comp: Scene7_Stats },
+  { start: 157, end: 172, label: 'CLOSE',    Comp: Scene8_Close },
+];
+
+const TOTAL = 172;
+
+function LabelUpdater() {
+  const time = useTime();
+  const root = React.useRef(null);
+  React.useEffect(() => {
+    const t = Math.floor(time);
+    const el = document.getElementById('root-video');
+    if (el) {
+      el.setAttribute('data-screen-label', `t=${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`);
+    }
+  }, [Math.floor(time)]);
+  return null;
+}
+
+// Transition overlay: a brief cyan flash + dark wipe between scenes.
+function SceneTransitions() {
+  const time = useTime();
+  // Find nearest scene boundary
+  let nearestBoundary = null;
+  let distance = Infinity;
+  for (const s of SCHEDULE) {
+    const d = Math.abs(time - s.start);
+    if (s.start > 0 && d < distance) { distance = d; nearestBoundary = s.start; }
+  }
+  if (nearestBoundary == null) return null;
+
+  const w = 0.35; // transition half-window
+  const rel = time - nearestBoundary;
+  if (Math.abs(rel) > w) return null;
+  // Build a two-stage flash: dark wipe coming in, cyan line flashing at the moment.
+  const t = (rel + w) / (w * 2); // 0..1
+  const flashOp = Math.max(0, 1 - Math.abs(rel) / 0.15) * 0.35;
+  const wipeOp = (rel < 0)
+    ? Math.pow(t, 2) * 0.9
+    : Math.pow(1 - t, 2) * 0.9;
+  return (
+    <>
+      <div style={{
+        position: 'absolute', inset: 0, background: '#000',
+        opacity: wipeOp, pointerEvents: 'none',
+      }}/>
+      <div style={{
+        position: 'absolute', left: 0, right: 0, top: '50%', height: 4, marginTop: -2,
+        background: '#00a1e2',
+        boxShadow: '0 0 40px #00a1e2, 0 0 80px #00a1e2',
+        opacity: flashOp, pointerEvents: 'none',
+      }}/>
+    </>
+  );
+}
+
+function SceneRouter() {
+  return (
+    <>
+      {SCHEDULE.map((s, i) => (
+        <Sprite key={i} start={s.start} end={s.end}>
+          <s.Comp/>
+        </Sprite>
+      ))}
+      <SceneTransitions/>
+      <LabelUpdater/>
+    </>
+  );
+}
+
+function TweaksPanel({ tweaks, onChange, visible }) {
+  if (!visible) return null;
+  const upd = (k, v) => {
+    const next = { ...tweaks, [k]: v };
+    onChange(next);
+    window.__asevaSpeed = next.playbackSpeed;
+    try {
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [k]: v } }, '*');
+    } catch {}
+  };
+  return (
+    <div style={{
+      position: 'fixed', right: 20, bottom: 60, zIndex: 9999,
+      background: 'rgba(15,22,35,0.96)',
+      border: '1px solid rgba(0,161,226,0.4)',
+      borderRadius: 10, padding: '18px 22px', width: 320,
+      color: '#fff', fontFamily: '"Open Sans", sans-serif',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+    }}>
+      <div style={{
+        fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+        letterSpacing: '0.3em', color: '#00a1e2', marginBottom: 14,
+        textTransform: 'uppercase',
+      }}>Tweaks</div>
+      <div style={{ marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+        <span>Playback speed</span>
+        <span style={{ fontFamily: '"JetBrains Mono", monospace', color: '#00a1e2' }}>
+          {tweaks.playbackSpeed.toFixed(2)}×
+        </span>
+      </div>
+      <input type="range" min="0.3" max="1.5" step="0.05"
+        value={tweaks.playbackSpeed}
+        onChange={e => upd('playbackSpeed', parseFloat(e.target.value))}
+        style={{ width: '100%', accentColor: '#00a1e2' }}/>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>
+        Slower values = slide stays on screen longer
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+        {[0.5, 0.75, 1].map(s => (
+          <button key={s} onClick={() => upd('playbackSpeed', s)}
+            style={{
+              flex: 1, padding: '6px 10px', fontSize: 11,
+              background: Math.abs(tweaks.playbackSpeed - s) < 0.01 ? '#00a1e2' : 'rgba(255,255,255,0.08)',
+              color: '#fff', border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 6, cursor: 'pointer',
+              fontFamily: '"JetBrains Mono", monospace', letterSpacing: '0.1em',
+            }}>
+            {s}×
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [editMode, setEditMode] = React.useState(false);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === '__activate_edit_mode') setEditMode(true);
+      else if (d.type === '__deactivate_edit_mode') setEditMode(false);
+    };
+    window.addEventListener('message', onMsg);
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch {}
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  return (
+    <div id="root-video" data-screen-label="t=00:00" style={{ width: '100%', height: '100%' }}>
+      <Stage width={1920} height={1080} duration={TOTAL} background="#000"
+             loop={true} autoplay={true} persistKey="aseva-lobby"
+             chrome={false}>
+        <SceneRouter/>
+      </Stage>
+      <TweaksPanel tweaks={tweaks} onChange={setTweaks} visible={editMode}/>
+    </div>
+  );
+}
+
+// Wait for all scene scripts to finish loading (babel transforms them async).
+function waitForScenes(cb) {
+  const needed = ['Scene1_Open','Scene2_Pillars','Scene3_Network','Scene4_Years','Scene5_Quote','Scene6_Grid','Scene7_Stats','Scene8_Close','Stage','Sprite','useTime'];
+  const check = () => {
+    if (needed.every(n => typeof window[n] !== 'undefined')) {
+      cb();
+    } else {
+      setTimeout(check, 50);
+    }
+  };
+  check();
+}
+waitForScenes(() => {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+});
+</script>
+</body>
+</html>
